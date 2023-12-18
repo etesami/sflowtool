@@ -36,6 +36,7 @@ extern "C" {
 #include "sflow_v2v4.h" /* sFlow v2/4 */
 #include "assert.h"
 #include "sflow_xdr.h" /* sFlow encode */
+#include "cryptoPAN.h" /* Crypto-PAn */
 
 #define SPOOFSOURCE 1
 #define YES 1
@@ -246,6 +247,8 @@ typedef struct _SFConfig {
   /* general options */
   int keepGoing;
   int allowDNS;
+  /* Anonymize */
+  int anonymize;
 
 } SFConfig;
 
@@ -1777,6 +1780,33 @@ static void decodeIPV4(SFSample *sample)
     memcpy(&ip, ptr, sizeof(ip));
     /* Value copy all ip elements into sample */
     sample->s.ipsrc.type = SFLADDRESSTYPE_IP_V4;
+    if (sfConfig.anonymize == YES) {
+      
+      unsigned char *state = (unsigned char *)malloc(64);
+      const char *stringValue = "String at the end: Hello, okay! This is a string value that issl";
+      memcpy(state, stringValue, 64);
+      state[64 - 1] = '\0';
+
+      uint32_t anon_address_src;
+      uint32_t anon_address_dst;
+      const unsigned char *key; //[32] AES256 KEY
+      const unsigned char *iv; //[16] AES256 IV
+      const unsigned char *pad; //[16]Padding bytes
+      key = state;
+      iv = state + 32;
+      pad = (state + 48);
+      
+      int status = -1;
+      //Use our cryptoPAN function
+      status = cryptoPAN_ipv4(ip.saddr, &anon_address_src, pad, key, iv);
+      status = cryptoPAN_ipv4(ip.daddr, &anon_address_dst, pad, key, iv);
+      if (status == -1)
+        perror("cryptoPAN_ipv4 failed");
+      else {
+	      ip.saddr=anon_address_src;
+	      ip.daddr=anon_address_dst;
+      }
+    }
     sample->s.ipsrc.address.ip_v4.addr = ip.saddr;
     sample->s.ipdst.type = SFLADDRESSTYPE_IP_V4;
     sample->s.ipdst.address.ip_v4.addr = ip.daddr;
@@ -6454,7 +6484,7 @@ static void process_command_line(int argc, char *argv[])
 
     in = getopt_long(argc,
 		     argv,
-		     "ljJgtTHxesSD46Akh?zL:p:r:R:P:c:d:N:f:v:V:",
+		     "ljJgtTHxesSD46aAkh?zL:p:r:R:P:c:d:N:f:v:V:",
 		     long_options,
 		     &option_index);
 
@@ -6462,6 +6492,7 @@ static void process_command_line(int argc, char *argv[])
       break;
 
     switch(in) {
+    case 'a': sfConfig.anonymize = YES; break;
     case 'p': sfConfig.sFlowInputPort = atoi(optarg); break;
     case 't': sfConfig.outputFormat = SFLFMT_PCAP; break;
     case 'T': sfConfig.outputFormat = SFLFMT_PCAP_DISCARD; break;
