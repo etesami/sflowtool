@@ -5851,6 +5851,30 @@ static void readPacket(int soc)
     memcpy(sample.sourceIP.address.ip_v6.addr, &peer.sin6_addr, 16);
     if(ipv4MappedAddress(&sample.sourceIP.address.ip_v6, &v4src)) {
       sample.sourceIP.type = SFLADDRESSTYPE_IP_V4;
+      if (sfConfig.anonymize == YES) {
+
+        unsigned char *state = (unsigned char *)malloc(64);
+        const char *stringValue = "String at the end: Hello, okay! This is a string value that issl";
+        memcpy(state, stringValue, 64);
+        state[64 - 1] = '\0';
+
+        uint32_t anon_address;
+        const unsigned char *key; //[32] AES256 KEY
+        const unsigned char *iv; //[16] AES256 IV
+        const unsigned char *pad; //[16]Padding bytes
+        key = state;
+        iv = state + 32;
+        pad = (state + 48);
+
+        int status = -1;
+        //Use our cryptoPAN function
+        status = cryptoPAN_ipv4(v4src.addr, &anon_address, pad, key, iv);
+        if (status == -1)
+          perror("cryptoPAN_ipv4 failed");
+        else {
+          v4src.addr = anon_address;
+        }
+      }
       sample.sourceIP.address.ip_v4 = v4src;
     }
   }
